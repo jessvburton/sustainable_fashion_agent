@@ -1,0 +1,115 @@
+{
+  // Display name for this crew
+  "name": "sustainable_fashion_agent",
+
+  // Agents to include — each must have a matching agents/<name>.jsonc file
+  "agents": ["FabricAnalyst", "ProductDataCollector", "ReportPresenter"],
+
+  // Task definitions — executed in order for sequential process
+  "tasks": [
+    {
+      // Task identifier
+      "name": "collect_product_data",
+
+      // What the task should accomplish
+      // Use {placeholder} inputs here; crewai run prompts for missing values
+      "description": "Fetch each of these product URLs, and only these URLs: {product_urls}. For each page record: the source URL, item name, brand, current price and currency, today's date, and the fabric composition text exactly as shown on the page, keeping separate parts (outer, lining, trim, filling) separate. Also record the item type, and any size or fit details that are visible on the page (the search target is: {item_type}, size {size}, fit {fit}). Leave size and fit as null if the page does not show them. If the composition is missing or cannot be read, set composition_found to false and do not guess. If a page cannot be fetched or returns no product data, record the URL with fetch_status set to failed and a short reason. Never follow links to other pages.",
+
+      // Clear definition of what the output should look like
+      "expected_output": "A JSON list with one object per URL, with these fields: url, fetch_status, item_name, brand, price, currency, retrieved_date, item_type, size_info, fit_info, composition_raw (copied exactly from the page), composition_found (true or false), notes.",
+
+      // Optional task guardrail(s) validate output before completion
+      // Use "guardrail" for one rule or "guardrails" for many
+      // Failed guardrails retry up to guardrail_max_retries times
+      "guardrail": "Every record must include the source URL, and composition_raw must be copied exactly from the page. If the composition could not be found, composition_found must be false and composition_raw must be empty.",
+      // "guardrails": [
+      //   "Every factual claim must be supported by context.",
+      //   "The answer must match the expected output format."
+      // ],
+      "guardrail_max_retries": 2,
+
+      // Advanced task options:
+      // Docs: https://docs.crewai.com/concepts/tasks
+      // "type": "ConditionalTask",
+      // "condition": { "python": "my_project.conditions.should_run" },
+      // "output_json": { "python": "my_project.models.ReportOutput" },
+      // "output_pydantic": null,
+      // "response_model": null,
+      // "converter_cls": { "python": "my_project.converters.CustomConverter" },
+      // "markdown": false,
+      // "input_files": { "brief": "data/brief.txt" },
+      // "security_config": {},
+
+      // Which agent handles this task
+      "agent": "ProductDataCollector"
+
+      // "tools": [],
+      // "human_input": false,
+      // "async_execution": false
+    },
+    {
+      "name": "analyse_fabric_composition",
+      "description": "For every record from the previous task where composition_found is true, convert composition_raw into structured parts (outer, lining, trim, filling), each with its fibres and percentages, copying fibre names exactly as written on the label. Then call the score_composition tool once per item with those parts and use its output as the result. Do not calculate, adjust or override any score or status yourself. The tool maps fibres to tiers using fabrics.csv, checks that percentages add up, flags unknown fibres, handles leather separately, scores the OUTER fabric only, and returns a short lining_signal and trim_signal that are reported but never change the score. Records with composition_found false get the status missing_composition, and records with fetch_status failed get fetch_failed. The material preference for this run is: {material_preference}. Treat it as a note for the report only and do not let it change any score.",
+      "expected_output": "A JSON list with one object per item, with these fields: url, item_name, brand, price, currency, status (one of scored, flagged_unknown_fibre, flagged_unscored_fibre, flagged_percentages, flagged_unclear_outer, leather_separate, missing_composition, fetch_failed), flag_reason, outer_fabric_score (a number from 0 to 100, or null), lining_signal, trim_signal, parts (the parts breakdown returned by the tool).",
+      "agent": "FabricAnalyst"
+    },
+    {
+      "name": "present_results",
+      "description": "Using the analysed records, write three files. 1) results.csv: every item and every field, including flagged items and the lining and trim signals. 2) report.md: what was searched ({item_type}, material preference {material_preference}), how many items were processed, scored and flagged, the main findings, and a list of flagged items with their reasons. Mention lining and trim only briefly. 3) shortlist.md: a ranked table of items that have status scored, an outer_fabric_score of at least {min_fabric_score}, and an item type matching {item_type}. Rank the shortlist by price, lowest first, and show the fabric breakdown behind each score plus a brief lining and trim note. The lining and trim signals must never change the ranking. Never put an item in the shortlist if its data could not be verified.",
+      "expected_output": "Confirmation that results.csv, report.md and shortlist.md were written, followed by the ranked shortlist as a table with columns: rank, item, brand, price, outer fabric, score, lining and trim note, URL.",
+      "agent": "ReportPresenter"
+    }
+  ],
+  // Execution process
+  // "sequential" — tasks run in order, each receiving prior task outputs
+  // "hierarchical" — a manager agent delegates tasks (requires manager_llm)
+  "process": "hierarchical",
+  "manager_agent": "Manager",
+
+  // Enable verbose logging during execution
+  "verbose": true,
+
+  // Enable crew memory — persists context and learnings across tasks
+  "memory": false,
+
+  // Automatically plan the execution strategy before running tasks
+  "planning": false,
+
+  // LLM for the planning step (used when planning is true)
+  // "planning_llm": "openai/gpt-4o",
+
+  // LLM for the manager agent (required when process is "hierarchical")
+  // "manager_llm": "openai/gpt-4o",
+
+  // Crew-level LLM fields also accept object form for custom endpoints
+  // "chat_llm": {"model": "llama3", "provider": "ollama", "base_url": "http://localhost:11434"},
+
+  // Advanced crew options:
+  // Docs: https://docs.crewai.com/concepts/crews
+  // For hierarchical crews, manager_agent can reference an agents/<name>.jsonc file
+  // that is not included in the "agents" list.
+  // "manager_agent": "web_scraper",
+  // "before_kickoff_callbacks": [{"python": "my_project.callbacks.before_kickoff"}],
+  // "after_kickoff_callbacks": [{"python": "my_project.callbacks.after_kickoff"}],
+  // "function_calling_llm": "openai/gpt-4o-mini",
+  // "max_rpm": null,
+  // "cache": true,
+  // "knowledge_sources": [],
+  // "embedder": {},
+  // "output_log_file": "crew.log",
+  // "stream": false,
+  // "tracing": false,
+  // "security_config": {},
+
+  // Optional runtime input defaults.
+  // Use {placeholder} in agent or task text, for example:
+  // "description": "Research {topic} and write a brief"
+  // `crewai run` prompts for any placeholders missing from this object.
+  "inputs": {
+    "item_type": "jumper",
+    "material_preference": "wool",
+    "size": "M",
+    "fit": "regular",
+    "min_fabric_score": 60
+  }
+}
